@@ -14,7 +14,7 @@ import type { AiExtractSettings } from "../admin_api/ai_extract_settings";
 
 // AI Prompt for email analysis
 const PROMPT = `
-You are an expert email analyzer. Your task is to first UNDERSTAND the email content, then EXTRACT the most relevant information based on priority.
+You are an expert email analyzer. Your task is first to UNDERSTAND the email content, then EXTRACT the most relevant information based on priority.
 
 # Step 1: UNDERSTAND the Email
 Read the entire email carefully and determine its:
@@ -24,62 +24,66 @@ Read the entire email carefully and determine its:
 - Any security-sensitive content
 
 # Step 2: EXTRACT Based on Priority
-After understanding, extract the most important item according to this priority order. For links, prioritize extracting the full, raw URL directly from the email content.
+After understanding, extract the most important item according to this priority order:
 
 **Priority 1: auth_code (Authentication Code)**
-- Numeric or alphanumeric codes used for login verification, multi-factor authentication, or one-time passwords.
-- Keywords: verification code, OTP, security code, confirmation code, auth code, two-factor code, passcode, pin, 验证码, 校验码, 认证码, 动态密码
-- Extract ONLY the code itself, removing any surrounding text, spaces, hyphens, or formatting.
-- The code must typically be a sequence of 4-8 digits or alphanumeric characters.
+- Numeric or alphanumeric codes used for login verification
+- Keywords: verification code, OTP, security code, confirmation code, auth code, 验证码, 校验码
+- Extract ONLY the code itself (remove spaces, hyphens, etc.)
 - Example: "123456" from "Your verification code is 123-456"
 
 **Priority 2: auth_link (Authentication Link)**
-- Links specifically designed for actions requiring user authentication or critical account management.
-- Keywords: verify email, confirm account, activate account, reset password, login, signin, signup, get started, change password, 验证, 激活, 登录, 注册, 找回密码
-- Must be a real, complete URL (http:// or https://) directly found in the email content.
-- Never fabricate or infer links that don't explicitly exist.
-- Prioritize links that clearly indicate an authentication-related action.
+- Links used for login, email verification, account activation, or password reset
+- Keywords: verify, confirm, activate, login, signin, signup, reset, 验证, 激活, 登录
+- Must be a real, complete URL (http:// or https://)
+- Sometimes be extracted from both HTML tags (<a href="...">) and Markdown format [text](url)
+- Never fabricate or infer links that don't exist in the content
 - Example: "https://example.com/verify?token=abc123"
 
 **Priority 3: service_link (Service Link)**
-- Links related to specific services, technical actions, or direct interactions within a platform.
-- Keywords: commit, pull request, issue, repository, deployment, code review, view report, review changes, pipeline, GitHub, GitLab, Jira, Confluence, bug, task, ticket, discussion
-- These are often notification-driven links prompting immediate action or review within a specific service.
-- Must be a real, complete URL (http:// or https://) directly found in the email content.
-- Example: GitHub commit link, deployment notification link, Jira issue link.
+- Links related to specific services or actions
+- Keywords: commit, pull request, issue, repository, deployment, GitHub, GitLab, code review
+- Real URLs for technical or service-related notifications
+- Extract from HTML anchors or Markdown links
+- Example: GitHub commit link, deployment notification link
 
 **Priority 4: subscription_link (Subscription Management Link)**
-- Links for managing email subscriptions, preferences, or opting out of future communications.
-- Keywords: unsubscribe, opt-out, manage preferences, update preferences, stop receiving emails, 退订, 取消订阅, 管理订阅, 偏好设置
-- Usually found at the bottom of marketing or notification emails.
-- Must be a real, complete URL (http:// or https://) directly found in the email content.
+- Links for managing email subscriptions, typically unsubscribe
+- Keywords: unsubscribe, opt-out, manage preferences, 退订, 取消订阅
+- Usually found at the bottom of marketing emails
+- Extract from HTML anchors or Markdown links
+- Real URLs for subscription control
 
 **Priority 5: other_link (Other Valuable Link)**
-- Any other link that provides valuable information, leads to a relevant resource, or is a primary call-to-action not covered by higher priorities.
-- Only extract if no higher-priority items exist.
-- Must be a real, complete URL (http:// or https://) directly found in the email content.
-- Avoid generic links like "contact us," "help," or "privacy policy" unless they are the *only* valuable link.
+- Any other link that might be useful or important
+- Only extract if no higher-priority items exist
+- Must be a real, complete URL from the content
+- Extract from HTML anchors or Markdown links
 
 **Priority 6: none**
-- No relevant codes, links, or valuable content found according to the defined priorities.
-- Email appears to be plain text without actionable items or contains only generic, low-value links.
+- No relevant codes, links, or valuable content found
+- Email appears to be plain text or irrelevant
 
-# Special Case: Markdown Link Format / Hyperlinked Text
-If the extracted content (especially links) is presented in markdown link format `[text](url)` or as hyperlinked text where the visible text is different from the URL:
+# Link Extraction Guidelines
+For HTML format: Extract URLs from <a href="..."> tags
+For Markdown format: Extract URLs from [text](url) patterns
+- Always use the full URL exactly as it appears
+- Preserve original casing and parameters
+- Do not decode/modify URLs
 
-- The `result` field MUST contain the full, raw URL.
-- The `result_text` field should contain the display text from the link.
-- If the display text (e.g., inside the brackets `[]`) is empty or generic (e.g., "click here," "link"), analyze the email context and language.
-- Generate a concise, meaningful description (2-5 words) for `result_text` that accurately reflects the link's purpose.
-- Match the email's language (Chinese → Chinese description, English → English).
+# Special Case: Link Text Handling
+When extracting from [text](url) or <a href="url">text</a>:
+- Use the visible text as result_text
+- If text is empty, analyze email language and context:
+  - Chinese emails → Generate Chinese description (2-5 words)
+  - English emails → Generate English description (2-5 words)
 
 # Critical Rules
-1. **Understand First**: Always analyze the email's purpose and context before extracting.
-2. **Single Selection**: Choose ONLY ONE type based on the highest priority match.
-3. **Real Data Only**: Never invent, guess, or fabricate content. Extract EXACTLY what is present.
-4. **Complete URLs**: Links must be full, valid URLs (starting with `http://` or `https://`) as they appear in the email. Do not shorten or alter them.
-5. **Clean Extraction**: Return only the raw extracted content for `result`.
-6. **Robust Link Parsing**: Be aggressive in identifying valid URLs. Look for `http://`, `https://`, and common domain patterns. Handle URLs wrapped in angle brackets (`<url>`) or simple text URLs.
+1. **Understand First**: Always analyze the email's purpose before extracting
+2. **Single Selection**: Choose ONLY ONE type based on highest priority match
+3. **Real Data Only**: Never invent, guess, or fabricate content
+4. **Complete URLs**: Links must be full, valid URLs as they appear in the email
+5. **Clean Extraction**: Return only the raw extracted content, no extra text
 
 # Output Format (JSON only)
 {
