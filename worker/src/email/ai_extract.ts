@@ -14,7 +14,7 @@ import type { AiExtractSettings } from "../admin_api/ai_extract_settings";
 
 // AI Prompt for email analysis
 const PROMPT = `
-You are an expert email analyzer. Your task is first to UNDERSTAND the email content, then EXTRACT the most relevant information based on priority.
+You are an expert email analyzer. Your task is to first UNDERSTAND the email content, then EXTRACT the most relevant information based on priority.
 
 # Step 1: UNDERSTAND the Email
 Read the entire email carefully and determine its:
@@ -36,7 +36,6 @@ After understanding, extract the most important item according to this priority 
 - Links used for login, email verification, account activation, or password reset
 - Keywords: verify, confirm, activate, login, signin, signup, reset, 验证, 激活, 登录
 - Must be a real, complete URL (http:// or https://)
-- Sometimes be extracted from both HTML tags (<a href="...">) and Markdown format [text](url)
 - Never fabricate or infer links that don't exist in the content
 - Example: "https://example.com/verify?token=abc123"
 
@@ -44,43 +43,34 @@ After understanding, extract the most important item according to this priority 
 - Links related to specific services or actions
 - Keywords: commit, pull request, issue, repository, deployment, GitHub, GitLab, code review
 - Real URLs for technical or service-related notifications
-- Extract from HTML anchors or Markdown links
 - Example: GitHub commit link, deployment notification link
 
 **Priority 4: subscription_link (Subscription Management Link)**
 - Links for managing email subscriptions, typically unsubscribe
 - Keywords: unsubscribe, opt-out, manage preferences, 退订, 取消订阅
 - Usually found at the bottom of marketing emails
-- Extract from HTML anchors or Markdown links
 - Real URLs for subscription control
 
 **Priority 5: other_link (Other Valuable Link)**
 - Any other link that might be useful or important
 - Only extract if no higher-priority items exist
 - Must be a real, complete URL from the content
-- Extract from HTML anchors or Markdown links
 
 **Priority 6: none**
 - No relevant codes, links, or valuable content found
 - Email appears to be plain text or irrelevant
 
-# Link Extraction Guidelines
-For HTML format: Extract URLs from <a href="..."> tags
-For Markdown format: Extract URLs from [text](url) patterns
-- Always use the full URL exactly as it appears
-- Preserve original casing and parameters
-- Do not decode/modify URLs
+# Special Case: Markdown Link Format
+If the extracted content is in markdown link format [text](url):
 
-# Special Case: Link Text Handling
-When extracting from [text](url) or <a href="url">text</a>:
-- Use the visible text as result_text
-- If text is empty, analyze email language and context:
-  - Chinese emails → Generate Chinese description (2-5 words)
-  - English emails → Generate English description (2-5 words)
+- Extract the text inside the brackets as result_text
+- When brackets are empty, analyze the email context and language
+- Generate a concise, meaningful description (2-5 words) for result_text
+- Match the email's language (Chinese → Chinese description, English → English)
 
 # Critical Rules
 1. **Understand First**: Always analyze the email's purpose before extracting
-2. **Single Selection**: Choose ONLY ONE type based on highest priority match
+2. **Single Selection**: Choose ONLY ONE type based on the highest priority match
 3. **Real Data Only**: Never invent, guess, or fabricate content
 4. **Complete URLs**: Links must be full, valid URLs as they appear in the email
 5. **Clean Extraction**: Return only the raw extracted content, no extra text
@@ -89,7 +79,7 @@ When extracting from [text](url) or <a href="url">text</a>:
 {
   "type": "auth_code|auth_link|service_link|subscription_link|other_link|none",
   "result": "the extracted code/link OR empty string",
-  "result_text": "the display text from markdown-format links or a generated description (if applicable)."
+  "result_text": "the display text from markdown-format links."
 }
 
 IMPORTANT: Return ONLY the JSON, no explanations or additional text.
