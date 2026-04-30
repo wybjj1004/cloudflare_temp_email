@@ -1,5 +1,8 @@
 import { Context } from "hono";
 import { createMimeMessage } from "mimetext";
+import { UserSettings, RoleAddressConfig } from "./models";
+import { CONSTANTS } from "./constants";
+import { compressText } from "./gzip";
 
 export const getJsonObjectValue = <T = any>(
     value: string | any
@@ -58,6 +61,16 @@ export const saveSetting = async (
         `INSERT or REPLACE INTO settings (key, value) VALUES (?, ?)`
         + ` ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`
     ).bind(key, value, value).run();
+    return true;
+}
+
+export const deleteSetting = async (
+    c: Context<HonoCustomType>,
+    key: string
+) => {
+    await c.env.DB.prepare(
+        `DELETE FROM settings WHERE key = ?`
+    ).bind(key).run();
     return true;
 }
 
@@ -148,6 +161,13 @@ export const getDomains = (c: Context<HonoCustomType>): string[] => {
     return c.env.DOMAINS;
 }
 
+export const getRandomSubdomainDomains = (c: Context<HonoCustomType>): string[] => {
+    if (!c.env.RANDOM_SUBDOMAIN_DOMAINS) {
+        return [];
+    }
+    return getStringArray(c.env.RANDOM_SUBDOMAIN_DOMAINS);
+}
+
 export const getUserRoles = (c: Context<HonoCustomType>): UserRole[] => {
     if (!c.env.USER_ROLES) {
         return [];
@@ -214,6 +234,13 @@ export const getAdminPasswords = (c: Context<HonoCustomType>): string[] => {
     return c.env.ADMIN_PASSWORDS.filter((item) => item.length > 0);
 }
 
+export const checkIsAdmin = (c: Context<HonoCustomType>): boolean => {
+    const adminPasswords = getAdminPasswords(c);
+    if (!adminPasswords.length) return false;
+    const adminAuth = c.req.raw.headers.get("x-admin-auth");
+    return !!adminAuth && adminPasswords.includes(adminAuth);
+}
+
 export const getEnvStringList = (value: string | string[] | undefined): string[] => {
     if (!value) {
         return [];
@@ -248,11 +275,41 @@ export const sendAdminInternalMail = async (
             data: text
         });
         const message_id = Math.random().toString(36).substring(2, 15);
-        const { success } = await c.env.DB.prepare(
-            `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-        ).bind(
-            "admin@internal", toMail, msg.asRaw(), message_id
-        ).run();
+        const rawText = msg.asRaw();
+        let success = false;
+        if (getBooleanValue(c.env.ENABLE_MAIL_GZIP)) {
+            let compressed: ArrayBuffer | null = null;
+            try {
+                compressed = await compressText(rawText);
+            } catch (gzipError) {
+                console.error("gzip compression failed, falling back to plaintext", gzipError);
+            }
+            if (compressed) {
+                try {
+                    ({ success } = await c.env.DB.prepare(
+                        `INSERT INTO raw_mails (source, address, raw_blob, message_id) VALUES (?, ?, ?, ?)`
+                    ).bind("admin@internal", toMail, compressed, message_id).run());
+                } catch (dbError) {
+                    const errMsg = String(dbError);
+                    if (errMsg.includes('raw_blob') || errMsg.includes('no such column')) {
+                        console.error("raw_blob column missing, falling back to plaintext", dbError);
+                        ({ success } = await c.env.DB.prepare(
+                            `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
+                        ).bind("admin@internal", toMail, rawText, message_id).run());
+                    } else {
+                        throw dbError;
+                    }
+                }
+            } else {
+                ({ success } = await c.env.DB.prepare(
+                    `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
+                ).bind("admin@internal", toMail, rawText, message_id).run());
+            }
+        } else {
+            ({ success } = await c.env.DB.prepare(
+                `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
+            ).bind("admin@internal", toMail, rawText, message_id).run());
+        }
         if (!success) {
             console.log(`Failed save message from admin@internal to ${toMail}`);
         }
@@ -262,6 +319,12 @@ export const sendAdminInternalMail = async (
         return false;
     }
 };
+
+export const isGlobalTurnstileEnabled = (c: Context<HonoCustomType>): boolean => {
+    return getBooleanValue(c.env.ENABLE_GLOBAL_TURNSTILE_CHECK)
+        && !!c.env.CF_TURNSTILE_SITE_KEY
+        && !!c.env.CF_TURNSTILE_SECRET_KEY;
+}
 
 export const checkCfTurnstile = async (
     c: Context<HonoCustomType>, token: string | undefined | null
@@ -303,6 +366,45 @@ export const hashPassword = async (password: string): Promise<string> => {
     return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+export const getMaxAddressCount = async (
+    c: Context<HonoCustomType>,
+    userRole: string | null | undefined,
+    settings: UserSettings
+): Promise<number> => {
+    if (!userRole) return settings.maxAddressCount;
+    const roleConfigs = await getJsonSetting<RoleAddressConfig>(c, CONSTANTS.ROLE_ADDRESS_CONFIG_KEY);
+    if (!roleConfigs) return settings.maxAddressCount;
+    const roleMaxCount = roleConfigs[userRole]?.maxAddressCount;
+    if (typeof roleMaxCount !== 'number') return settings.maxAddressCount;
+    if (roleMaxCount < 0) return settings.maxAddressCount;
+    return roleMaxCount;
+};
+
+/**
+ * 检查用户是否已达到地址数量限制
+ * @param c - Hono Context
+ * @param user_id - 用户 ID
+ * @param userRole - 用户角色
+ * @returns true 表示已超限，false 表示未超限
+ */
+export const isAddressCountLimitReached = async (
+    c: Context<HonoCustomType>,
+    user_id: number | string,
+    userRole: string | null | undefined
+): Promise<boolean> => {
+    const value = await getJsonSetting(c, CONSTANTS.USER_SETTINGS_KEY);
+    const settings = new UserSettings(value);
+    const maxAddressCount = await getMaxAddressCount(c, userRole, settings);
+
+    if (maxAddressCount <= 0) return false;
+
+    const { count } = await c.env.DB.prepare(
+        `SELECT COUNT(*) as count FROM users_address where user_id = ?`
+    ).bind(user_id).first<{ count: number }>() || { count: 0 };
+
+    return count >= maxAddressCount;
+};
+
 export default {
     getJsonObjectValue,
     getSetting,
@@ -314,12 +416,15 @@ export default {
     getStringArray,
     getDefaultDomains,
     getDomains,
+    getRandomSubdomainDomains,
     getUserRoles,
     getAnotherWorkerList,
     getPasswords,
     getAdminPasswords,
+    checkIsAdmin,
     getEnvStringList,
     sendAdminInternalMail,
+    isGlobalTurnstileEnabled,
     checkCfTurnstile,
     checkUserPassword,
     getJsonSetting,

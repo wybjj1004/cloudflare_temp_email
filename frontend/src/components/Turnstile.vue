@@ -1,33 +1,40 @@
 <script setup>
-import { ref, watch, onMounted } from "vue";
-import { useI18n } from 'vue-i18n'
+import { ref, watch } from "vue";
+import { useScopedI18n } from '@/i18n/app'
 import { useGlobalState } from '../store'
+import { getTurnstileLocale } from '../i18n/locale-registry'
+import { DEFAULT_LOCALE, isSupportedLocale } from '../i18n/utils'
 const { openSettings, isDark } = useGlobalState()
 
 const cfToken = defineModel('value')
 
-const { locale, t } = useI18n({
-    messages: {
-        en: {
-            refresh: 'Refresh'
-        },
-        zh: {
-            refresh: '刷新'
-        }
-    }
-});
+const { locale, t } = useScopedI18n('components.Turnstile')
 
+const containerId = `cf-turnstile-${Math.random().toString(36).slice(2, 9)}`
 const cfTurnstileId = ref("")
 const turnstileLoading = ref(false)
+let turnstileRenderQueue = Promise.resolve()
+
+const refresh = () => rerenderTurnstile()
+defineExpose({ refresh })
+
+const rerenderTurnstile = () => {
+    cfToken.value = "";
+    turnstileRenderQueue = turnstileRenderQueue
+        .catch(() => { })
+        .then(() => checkCfTurnstile(true))
+    turnstileRenderQueue.catch(() => { })
+    return turnstileRenderQueue
+}
 
 const checkCfTurnstile = async (remove) => {
     if (!openSettings.value.cfTurnstileSiteKey) return;
     turnstileLoading.value = true;
     try {
-        let container = document.getElementById("cf-turnstile");
+        let container = document.getElementById(containerId);
         let count = 100;
         while (!container && count-- > 0) {
-            container = document.getElementById("cf-turnstile");
+            container = document.getElementById(containerId);
             await new Promise(r => setTimeout(r, 10));
         }
         count = 100;
@@ -37,11 +44,15 @@ const checkCfTurnstile = async (remove) => {
         if (remove && cfTurnstileId.value) {
             window.turnstile.remove(cfTurnstileId.value);
         }
+        // Cloudflare documents sitekey/theme/language as render-time options and
+        // exposes remove()/render() for widget lifecycle updates, so recreate the
+        // widget when any of those inputs change:
+        // https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/
         cfTurnstileId.value = window.turnstile.render(
-            "#cf-turnstile",
+            `#${containerId}`,
             {
                 sitekey: openSettings.value.cfTurnstileSiteKey,
-                language: locale.value == 'zh' ? 'zh-CN' : 'en-US',
+                language: getTurnstileLocale(isSupportedLocale(locale.value) ? locale.value : DEFAULT_LOCALE),
                 theme: isDark.value ? 'dark' : 'light',
                 callback: function (token) {
                     cfToken.value = token;
@@ -53,14 +64,7 @@ const checkCfTurnstile = async (remove) => {
     }
 }
 
-watch(isDark, async (isDark) => {
-    checkCfTurnstile(true)
-}, { immediate: true })
-
-onMounted(() => {
-    cfToken.value = "";
-    checkCfTurnstile(true);
-})
+watch([isDark, locale, () => openSettings.value.cfTurnstileSiteKey], rerenderTurnstile, { immediate: true })
 </script>
 
 <template>
@@ -68,8 +72,8 @@ onMounted(() => {
         <n-spin description="loading..." :show="turnstileLoading">
             <n-form-item-row>
                 <n-flex vertical>
-                    <div id="cf-turnstile"></div>
-                    <n-button text @click="checkCfTurnstile(true)">
+                    <div :id="containerId"></div>
+                    <n-button text @click="rerenderTurnstile">
                         {{ t('refresh') }}
                     </n-button>
                 </n-flex>

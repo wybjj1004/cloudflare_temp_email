@@ -4,6 +4,7 @@ import { jwt } from 'hono/jwt'
 import { Jwt } from 'hono/utils/jwt'
 
 import { api as commonApi } from './commom_api';
+import { api as openAuthApi } from './open_api/auth';
 import { api as mailsApi } from './mails_api'
 import { api as userApi } from './user_api';
 import { api as adminApi } from './admin_api';
@@ -13,7 +14,7 @@ import { api as telegramApi } from './telegram_api'
 import i18n from './i18n';
 import { email } from './email';
 import { scheduled } from './scheduled';
-import { getAdminPasswords, getPasswords, getBooleanValue, getStringArray } from './utils';
+import { getPasswords, getBooleanValue, getStringArray, checkIsAdmin } from './utils';
 import { checkAccessControl } from './ip_blacklist';
 
 const API_PATHS = [
@@ -215,13 +216,9 @@ app.use('/user_api/*', async (c, next) => {
 app.use('/admin/*', async (c, next) => {
 
 	// check header x-admin-auth
-	const adminPasswords = getAdminPasswords(c);
-	if (adminPasswords && adminPasswords.length > 0) {
-		const adminAuth = c.req.raw.headers.get("x-admin-auth");
-		if (adminAuth && adminPasswords.includes(adminAuth)) {
-			await next();
-			return;
-		}
+	if (checkIsAdmin(c)) {
+		await next();
+		return;
 	}
 	const lang = c.req.raw.headers.get("x-lang") || c.env.DEFAULT_LANG;
 	const msgs = i18n.getMessages(lang);
@@ -257,6 +254,7 @@ app.use('/admin/*', async (c, next) => {
 
 
 app.route('/', commonApi)
+app.route('/', openAuthApi)
 app.route('/', mailsApi)
 app.route('/', userApi)
 app.route('/', adminApi)

@@ -1,11 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useI18n } from 'vue-i18n'
+import { useScopedI18n } from '@/i18n/app'
 import { useRouter } from 'vue-router'
 
 import { useGlobalState } from '../store'
 import { api } from '../api'
-import { getRouterPathWithLang } from '../utils'
+import { getRouterPathWithLang, hashPassword } from '../utils'
+import Turnstile from '../components/Turnstile.vue'
 
 import SenderAccess from './admin/SenderAccess.vue'
 import Statistics from "./admin/Statistics.vue"
@@ -44,12 +45,23 @@ const SendMail = defineAsyncComponent(() => {
     .finally(() => loading.value = false);
 });
 
+const cfToken = ref('')
+const turnstileRef = ref(null)
+
 const authFunc = async () => {
   try {
+    await api.fetch('/open_api/admin_login', {
+      method: 'POST',
+      body: JSON.stringify({
+        password: await hashPassword(tmpAdminAuth.value),
+        cf_token: cfToken.value
+      })
+    });
     adminAuth.value = tmpAdminAuth.value;
     location.reload()
   } catch (error) {
     message.error(error.message || "error");
+    turnstileRef.value?.refresh?.();
   }
 }
 
@@ -66,90 +78,7 @@ const handleLogout = async () => {
   await router.push(getRouterPathWithLang('/', locale.value));
 }
 
-const { t, locale } = useI18n({
-  messages: {
-    en: {
-      accessHeader: 'Admin Password',
-      accessTip: 'Please enter the admin password',
-      mails: 'Emails',
-      sendMail: 'Send Mail',
-      qucickSetup: 'Quick Setup',
-      account: 'Account',
-      account_create: 'Create Account',
-      account_settings: 'Account Settings',
-      user: 'User',
-      user_management: 'User Management',
-      user_settings: 'User Settings',
-      userOauth2Settings: 'Oauth2 Settings',
-      roleAddressConfig: 'Role Address Config',
-      unknow: 'Mails with unknow receiver',
-      senderAccess: 'Sender Access Control',
-      sendBox: 'Send Box',
-      telegram: 'Telegram Bot',
-      webhookSettings: 'Webhook Settings',
-      statistics: 'Statistics',
-      maintenance: 'Maintenance',
-      database: 'Database',
-      workerconfig: 'Worker Config',
-      ipBlacklistSettings: 'IP Blacklist',
-      aiExtractSettings: 'AI Extract Settings',
-      appearance: 'Appearance',
-      about: 'About',
-      ok: 'OK',
-      mailWebhook: 'Mail Webhook',
-      adminAccount: 'Admin',
-      loginMethod: 'Login Method',
-      loginViaPassword: 'Admin Password Login',
-      loginViaUserAdmin: 'User Admin Permission',
-      loginViaDisabledCheck: 'Disabled Password Check',
-      logout: 'Logout',
-      logoutConfirmTitle: 'Confirm Logout',
-      logoutConfirmContent: 'Are you sure you want to logout from admin panel?',
-      confirm: 'Confirm',
-      logoutSuccess: 'Logout successful',
-    },
-    zh: {
-      accessHeader: 'Admin 密码',
-      accessTip: '请输入 Admin 密码',
-      mails: '邮件',
-      sendMail: '发送邮件',
-      qucickSetup: '快速设置',
-      account: '账号',
-      account_create: '创建账号',
-      account_settings: '账号设置',
-      user: '用户',
-      user_management: '用户管理',
-      user_settings: '用户设置',
-      userOauth2Settings: 'Oauth2 设置',
-      roleAddressConfig: '角色地址配置',
-      unknow: '无收件人邮件',
-      senderAccess: '发件权限控制',
-      sendBox: '发件箱',
-      telegram: '电报机器人',
-      webhookSettings: 'Webhook 设置',
-      statistics: '统计',
-      maintenance: '维护',
-      database: '数据库',
-      workerconfig: 'Worker 配置',
-      ipBlacklistSettings: 'IP 黑名单',
-      aiExtractSettings: 'AI 提取设置',
-      appearance: '外观',
-      about: '关于',
-      ok: '确定',
-      mailWebhook: '邮件 Webhook',
-      adminAccount: '管理员',
-      loginMethod: '登录方式',
-      loginViaPassword: 'Admin 密码登录',
-      loginViaUserAdmin: '用户管理员权限',
-      loginViaDisabledCheck: '已禁用密码检查',
-      logout: '退出登录',
-      logoutConfirmTitle: '确认退出',
-      logoutConfirmContent: '确定要退出管理员面板吗？',
-      confirm: '确认',
-      logoutSuccess: '退出成功',
-    }
-  }
-});
+const { t, locale } = useScopedI18n('views.Admin')
 
 const showAdminPasswordModal = computed(() => !showAdminPage.value || showAdminAuth.value)
 const tmpAdminAuth = ref('')
@@ -169,6 +98,8 @@ const currentLoginMethod = computed(() => {
 })
 
 onMounted(async () => {
+  // make sure openSettings is fetched for turnstile check
+  if (!openSettings.value.fetched) await api.getOpenSettings(message);
   // make sure user_id is fetched
   if (!userSettings.value.user_id) await api.getUserSettings(message);
 })
@@ -179,7 +110,8 @@ onMounted(async () => {
     <n-modal v-model:show="showAdminPasswordModal" :closable="false" :closeOnEsc="false" :maskClosable="false"
       preset="dialog" :title="t('accessHeader')">
       <p>{{ t('accessTip') }}</p>
-      <n-input v-model:value="tmpAdminAuth" type="password" show-password-on="click" />
+      <n-input v-model:value="tmpAdminAuth" type="password" show-password-on="click" @keyup.enter="authFunc" />
+      <Turnstile ref="turnstileRef" v-if="openSettings.enableGlobalTurnstileCheck" v-model:value="cfToken" />
       <template #action>
         <n-button @click="authFunc" type="primary" :loading="loading">
           {{ t('ok') }}

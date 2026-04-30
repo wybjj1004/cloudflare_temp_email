@@ -51,10 +51,59 @@ services:
       - imap_port=11143
 ```
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `proxy_url` | `http://localhost:8787` | Worker backend URL |
+| `port` | `8025` | SMTP port |
+| `imap_port` | `11143` | IMAP port |
+| `smtp_tls_cert` | empty | SMTP TLS certificate file path (PEM), enables STARTTLS when configured |
+| `smtp_tls_key` | empty | SMTP TLS private key file path (PEM) |
+| `imap_tls_cert` | empty | IMAP TLS certificate file path (PEM), enables STARTTLS when configured |
+| `imap_tls_key` | empty | IMAP TLS private key file path (PEM) |
+| `imap_cache_size` | `500` | Max cached messages per mailbox |
+| `imap_http_timeout` | `30.0` | Backend HTTP request timeout (seconds) |
+
+## Enabling STARTTLS
+
+Configure the TLS certificate environment variables for SMTP and/or IMAP to enable STARTTLS support. SMTP and IMAP can share the same certificate.
+
+```bash
+# .env example
+smtp_tls_cert=/path/to/cert.pem
+smtp_tls_key=/path/to/key.pem
+imap_tls_cert=/path/to/cert.pem
+imap_tls_key=/path/to/key.pem
+```
+
+In Docker Compose:
+
+```yaml
+environment:
+  - smtp_tls_cert=/certs/cert.pem
+  - smtp_tls_key=/certs/key.pem
+  - imap_tls_cert=/certs/cert.pem
+  - imap_tls_key=/certs/key.pem
+volumes:
+  - ./certs:/certs:ro
+```
+
+## IMAP Login Methods
+
+Two login methods are supported:
+
+| Method | Username | Password | Description |
+|--------|----------|----------|-------------|
+| JWT Credential | Email address | JWT token | Address credential from frontend, direct authentication |
+| Address+Password | Email address | Address password | Verified via backend `/api/address_login` |
+
+The system automatically detects the password format: a three-segment string starting with `eyJ` is treated as a JWT; otherwise it is treated as a password and verified via the backend.
+
 ## Using Thunderbird to Login
 
 Download [Thunderbird](https://www.thunderbird.net/en-US/)
 
-For password, enter the `email address credential`
+For password, enter the `email address credential` or `email address password`
 
 ![imap](/feature/imap.png)

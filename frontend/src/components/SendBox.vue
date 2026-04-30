@@ -1,10 +1,11 @@
 <script setup>
 import { watch, onMounted, ref, computed } from "vue";
 import { useMessage } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
+import { useScopedI18n } from '@/i18n/app'
 import { useGlobalState } from '../store'
 import { useIsMobile } from '../utils/composables'
 import { utcToLocalDate } from '../utils';
+import { SendRound } from '@vicons/material'
 
 const message = useMessage()
 const isMobile = useIsMobile()
@@ -45,34 +46,7 @@ const multiActionMode = ref(false)
 const showMultiActionDelete = ref(false)
 const multiActionDeleteProgress = ref({ percentage: 0, tip: '0/0' })
 
-const { t } = useI18n({
-  messages: {
-    en: {
-      success: 'Success',
-      refresh: 'Refresh',
-      showCode: 'Change View Original Code',
-      pleaseSelectMail: "Please select a mail to view.",
-      delete: 'Delete',
-      deleteMailTip: 'Are you sure you want to delete mail?',
-      multiAction: 'Multi Action',
-      cancelMultiAction: 'Cancel Multi Action',
-      selectAll: 'Select All of This Page',
-      unselectAll: 'Unselect All',
-    },
-    zh: {
-      success: '成功',
-      refresh: '刷新',
-      showCode: '切换查看元数据',
-      pleaseSelectMail: "请选择一封邮件查看。",
-      delete: '删除',
-      deleteMailTip: '确定要删除邮件吗?',
-      multiAction: '多选',
-      cancelMultiAction: '取消多选',
-      selectAll: '全选本页',
-      unselectAll: '取消全选',
-    }
-  }
-});
+const { t } = useScopedI18n('components.SendBox')
 
 watch([page, pageSize], async ([page, pageSize], [oldPage, oldPageSize]) => {
   if (page !== oldPage || pageSize !== oldPageSize) {
@@ -239,7 +213,7 @@ onMounted(async () => {
       <n-split direction="horizontal" :max="0.75" :min="0.25" :default-size="mailboxSplitSize"
         :on-update:size="onSpiltSizeChange">
         <template #1>
-          <div style="overflow: auto; height: 80vh;">
+          <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
             <n-list hoverable clickable>
               <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
                 :class="mailItemClass(row)">
@@ -297,7 +271,10 @@ onMounted(async () => {
             <div v-else v-html="curMail.content" style="margin-top: 10px;"></div>
           </n-card>
           <n-card :bordered="false" embedded class="mail-item" v-else>
-            <n-result status="info" :title="t('pleaseSelectMail')">
+            <n-result status="info" :title="count === 0 ? t('emptySent') : t('pleaseSelectMail')">
+              <template #icon>
+                <n-icon :component="SendRound" :size="100" />
+              </template>
             </n-result>
           </n-card>
         </template>
@@ -312,7 +289,7 @@ onMounted(async () => {
           {{ t('refresh') }}
         </n-button>
       </div>
-      <div style="overflow: auto; height: 80vh;">
+      <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
         <n-list hoverable clickable>
           <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)">
             <n-thing :title="row.subject">

@@ -1,27 +1,48 @@
 name: Deploy Frontend with page function
 
 on:
+  workflow_run:
+    workflows: [Upstream Sync]
+    types: [completed]
+  push:
+    tags:
+      - "*"
   workflow_dispatch:
 
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      has_config: ${{ steps.check.outputs.has_config }}
+    steps:
+      - name: Check PAGE_TOML
+        id: check
+        run: |
+          if [ -n "$PAGE_TOML" ]; then
+            echo "has_config=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_config=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          PAGE_TOML: ${{ secrets.PAGE_TOML }}
+
+  deploy:
+    needs: check
+    if: ${{ needs.check.outputs.has_config == 'true' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
 
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v5
         name: Install pnpm
-        id: pnpm-install
         with:
-          version: 8
+          version: 10
           run_install: false
 
       - name: Deploy Frontend for ${{ github.ref_name }}
@@ -33,7 +54,7 @@ jobs:
           echo '${{ secrets.PAGE_TOML }}' > wrangler.toml
           pnpm install --no-frozen-lockfile
           pnpm run deploy
-          echo "Deploying prodcution for ${{ github.ref_name }}"
+          echo "Deploying production for ${{ github.ref_name }}"
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

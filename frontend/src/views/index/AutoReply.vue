@@ -1,5 +1,5 @@
 <script setup>
-import { useI18n } from 'vue-i18n'
+import { useScopedI18n } from '@/i18n/app'
 import { onMounted, ref } from 'vue'
 
 import { useGlobalState } from '../../store'
@@ -15,31 +15,7 @@ const name = ref("")
 const { settings } = useGlobalState()
 
 
-const { t } = useI18n({
-    locale: 'zh',
-    messages: {
-        en: {
-            success: 'Success',
-            settings: 'Settings',
-            sourcePrefix: 'Source Mail Prefix',
-            name: 'Name',
-            enableAutoReply: 'Enable Auto Reply',
-            subject: 'Subject',
-            autoReply: 'Auto Reply',
-            save: 'Save',
-        },
-        zh: {
-            success: '成功',
-            settings: '设置',
-            sourcePrefix: '来源邮件前缀',
-            name: '名称',
-            enableAutoReply: '启用自动回复',
-            subject: '主题',
-            autoReply: '自动回复',
-            save: '保存',
-        }
-    }
-});
+const { t } = useScopedI18n('views.index.AutoReply')
 
 const fetchData = async () => {
     try {
@@ -93,7 +69,8 @@ onMounted(async () => {
                     <n-input :disabled="!enableAutoReply" v-model:value="name" />
                 </n-form-item>
                 <n-form-item :label="t('sourcePrefix')" label-placement="left">
-                    <n-input :disabled="!enableAutoReply" v-model:value="sourcePrefix" />
+                    <n-input :disabled="!enableAutoReply" v-model:value="sourcePrefix"
+                        :placeholder="t('sourcePrefixPlaceholder')" />
                 </n-form-item>
                 <n-form-item :label="t('subject')" label-placement="left">
                     <n-input :disabled="!enableAutoReply" v-model:value="subject" />

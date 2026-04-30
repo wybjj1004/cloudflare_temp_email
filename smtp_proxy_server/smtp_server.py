@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import email
+import ssl
+
 import httpx
 
 from aiosmtpd.controller import Controller
@@ -10,6 +12,15 @@ from config import settings
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
+
+
+def _safe_decode_payload(payload, charset):
+    if payload is None:
+        return ""
+    try:
+        return payload.decode(charset or "utf-8", errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
 
 
 class CustomSMTPHandler:
@@ -49,7 +60,7 @@ class CustomSMTPHandler:
                     value = part.get_payload(decode=False)
                 else:
                     payload = part.get_payload(decode=True)
-                    value = payload.decode(charset) if charset else payload
+                    value = _safe_decode_payload(payload, charset)
                 if not value:
                     continue
                 content_list.append({
@@ -63,8 +74,8 @@ class CustomSMTPHandler:
                 value = msg.get_payload(decode=False)
             else:
                 payload = msg.get_payload(decode=True)
-                value = payload.decode(charset) if charset else payload
-            _logger.info(f"Payload {msg._payload} charset {charset}")
+                value = _safe_decode_payload(payload, charset)
+            _logger.debug("Parsed content charset=%s", charset)
             content_list.append({
                 "type": msg.get_content_type(),
                 "value": value
@@ -121,27 +132,41 @@ class CustomSMTPHandler:
         return '250 OK'
 
 
-handler = CustomSMTPHandler()
-server = Controller(
-    handler,
-    hostname="",
-    port=settings.port,
-    auth_require_tls=False,
-    decode_data=True,
-    authenticator=handler.authenticator,
-    auth_exclude_mechanism=["DONT"]
-)
+def start_smtp_server():
+    handler = CustomSMTPHandler()
 
+    tls_context = None
+    has_cert = bool(settings.smtp_tls_cert)
+    has_key = bool(settings.smtp_tls_key)
+    if has_cert != has_key:
+        raise ValueError(
+            "Both smtp_tls_cert and smtp_tls_key must be set together"
+        )
+    if has_cert and has_key:
+        _logger.info("TLS enabled for SMTP (STARTTLS)")
+        tls_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        tls_context.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3
+        tls_context.load_cert_chain(settings.smtp_tls_cert, settings.smtp_tls_key)
 
-async def start():
-    _logger.info(f"Starting server on port {settings.port}")
+    server = Controller(
+        handler,
+        hostname="",
+        port=settings.port,
+        auth_require_tls=bool(tls_context),
+        decode_data=True,
+        authenticator=handler.authenticator,
+        auth_exclude_mechanism=["DONT"],
+        tls_context=tls_context,
+    )
+
+    _logger.info(
+        "Starting SMTP server on port %s tls=%s",
+        settings.port, bool(tls_context),
+    )
     server.start()
 
-
-def start_smtp_server():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    task = loop.create_task(start())
     try:
         loop.run_forever()
     except KeyboardInterrupt:
@@ -150,5 +175,9 @@ def start_smtp_server():
 
 
 if __name__ == "__main__":
-    _logger.info(f"Starting server settings[{settings}]")
+    _logger.info(
+        "Starting SMTP server proxy_url=%s port=%s tls=%s",
+        settings.proxy_url, settings.port,
+        bool(settings.smtp_tls_cert and settings.smtp_tls_key),
+    )
     start_smtp_server()

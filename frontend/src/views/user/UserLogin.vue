@@ -1,7 +1,7 @@
 <script setup>
 import { useMessage } from 'naive-ui'
 import { onMounted, ref } from "vue";
-import { useI18n } from 'vue-i18n'
+import { useScopedI18n } from '@/i18n/app'
 import { KeyFilled } from '@vicons/material'
 
 import { api } from '../../api';
@@ -17,50 +17,7 @@ const {
 } = useGlobalState()
 const message = useMessage();
 
-const { t } = useI18n({
-    messages: {
-        en: {
-            login: 'Login',
-            register: 'Register',
-            email: 'Email',
-            password: 'Password',
-            verifyCode: 'Verification Code',
-            verifyCodeSent: 'Verification Code Sent, expires in {timeout} seconds',
-            waitforVerifyCode: 'Wait for {timeout} seconds',
-            sendVerificationCode: 'Send Verification Code',
-            forgotPassword: 'Forgot Password',
-            cannotForgotPassword: 'Mail verification is disabled or register is disabled, cannot reset password, please contact administrator',
-            resetPassword: 'Reset Password',
-            pleaseInput: 'Please input email and password',
-            pleaseInputEmail: 'Please input email',
-            pleaseInputCode: 'Please input code',
-            pleaseCompleteTurnstile: 'Please complete turnstile',
-            pleaseLogin: 'Please login',
-            loginWithPasskey: 'Login with Passkey',
-            loginWith: 'Login with {provider}',
-        },
-        zh: {
-            login: '登录',
-            register: '注册',
-            email: '邮箱',
-            password: '密码',
-            verifyCode: '验证码',
-            sendVerificationCode: '发送验证码',
-            verifyCodeSent: '验证码已发送, {timeout} 秒后失效',
-            waitforVerifyCode: '等待{timeout}秒',
-            forgotPassword: '忘记密码',
-            cannotForgotPassword: '未开启邮箱验证或未开启注册功能，无法重置密码，请联系管理员',
-            resetPassword: '重置密码',
-            pleaseInput: '请输入邮箱和密码',
-            pleaseInputEmail: '请输入邮箱',
-            pleaseInputCode: '请输入验证码',
-            pleaseCompleteTurnstile: '请完成人机验证',
-            pleaseLogin: '请登录',
-            loginWithPasskey: '使用 Passkey 登录',
-            loginWith: '使用 {provider} 登录',
-        }
-    }
-});
+const { t } = useScopedI18n('views.user.UserLogin')
 
 const tabValue = ref("signin");
 const showModal = ref(false);
@@ -69,7 +26,12 @@ const user = ref({
     password: "",
     code: ""
 });
-const cfToken = ref("")
+const signupCfToken = ref("")
+const resetCfToken = ref("")
+const loginCfToken = ref("")
+const signupTurnstileRef = ref(null)
+const resetTurnstileRef = ref(null)
+const loginTurnstileRef = ref(null)
 
 const emailLogin = async () => {
     if (!user.value.email || !user.value.password) {
@@ -82,13 +44,15 @@ const emailLogin = async () => {
             body: JSON.stringify({
                 email: user.value.email,
                 // hash password
-                password: await hashPassword(user.value.password)
+                password: await hashPassword(user.value.password),
+                cf_token: loginCfToken.value
             })
         });
         userJwt.value = res.jwt;
         location.reload();
     } catch (error) {
         message.error(error.message || "login failed");
+        loginTurnstileRef.value?.refresh?.();
     }
 };
 
@@ -105,7 +69,8 @@ const sendVerificationCode = async () => {
         message.error(t('pleaseInputEmail'));
         return;
     }
-    if (openSettings.value.cfTurnstileSiteKey && !cfToken.value && userOpenSettings.value.enableMailVerify) {
+    const currentCfToken = showModal.value ? resetCfToken.value : signupCfToken.value;
+    if (openSettings.value.cfTurnstileSiteKey && !currentCfToken && userOpenSettings.value.enableMailVerify) {
         message.error(t('pleaseCompleteTurnstile'));
         return;
     }
@@ -114,7 +79,7 @@ const sendVerificationCode = async () => {
             method: "POST",
             body: JSON.stringify({
                 email: user.value.email,
-                cf_token: cfToken.value
+                cf_token: currentCfToken
             })
         });
         if (res && res.expirationTtl) {
@@ -130,6 +95,11 @@ const sendVerificationCode = async () => {
         }
     } catch (error) {
         message.error(error.message || "send verification code failed");
+    }
+    if (showModal.value) {
+        resetTurnstileRef.value?.refresh?.();
+    } else {
+        signupTurnstileRef.value?.refresh?.();
     }
 };
 
@@ -149,7 +119,8 @@ const emailSignup = async () => {
                 email: user.value.email,
                 // hash password
                 password: await hashPassword(user.value.password),
-                code: user.value.code
+                code: user.value.code,
+                cf_token: showModal.value ? resetCfToken.value : signupCfToken.value
             }),
             message: message
         });
@@ -171,7 +142,7 @@ const passkeyLogin = async () => {
                 domain: location.hostname,
             })
         })
-        const credential = await startAuthentication(options)
+        const credential = await startAuthentication({ optionsJSON: options })
 
         // Send the result to the server and return the promise.
         const res = await api.fetch(`/user_api/passkey/authenticate_response`, {
@@ -216,8 +187,10 @@ onMounted(async () => {
                         <n-input v-model:value="user.email" />
                     </n-form-item-row>
                     <n-form-item-row :label="t('password')" required>
-                        <n-input v-model:value="user.password" type="password" show-password-on="click" />
+                        <n-input v-model:value="user.password" type="password" show-password-on="click"
+                            @keyup.enter="emailLogin" />
                     </n-form-item-row>
+                    <Turnstile ref="loginTurnstileRef" v-if="openSettings.enableGlobalTurnstileCheck" v-model:value="loginCfToken" />
                     <n-button @click="emailLogin" type="primary" block secondary strong>
                         {{ t('login') }}
                     </n-button>
@@ -233,6 +206,9 @@ onMounted(async () => {
                     </n-button>
                     <n-button @click="oauth2Login(item.clientID)" v-for="item in userOpenSettings.oauth2ClientIDs"
                         :key="item.clientID" block secondary strong>
+                        <template #icon v-if="item.icon">
+                            <span class="oauth2-icon" v-html="item.icon"></span>
+                        </template>
                         {{ t('loginWith', { provider: item.name }) }}
                     </n-button>
                 </n-form>
@@ -243,9 +219,10 @@ onMounted(async () => {
                         <n-input v-model:value="user.email" />
                     </n-form-item-row>
                     <n-form-item-row :label="t('password')" required>
-                        <n-input v-model:value="user.password" type="password" show-password-on="click" />
+                        <n-input v-model:value="user.password" type="password" show-password-on="click"
+                            @keyup.enter="emailSignup" />
                     </n-form-item-row>
-                    <Turnstile v-if="userOpenSettings.enableMailVerify" v-model:value="cfToken" />
+                    <Turnstile ref="signupTurnstileRef" v-if="userOpenSettings.enableMailVerify" v-model:value="signupCfToken" />
                     <n-form-item-row v-if="userOpenSettings.enableMailVerify" :label="t('verifyCode')" required>
                         <n-input-group>
                             <n-input v-model:value="user.code" />
@@ -256,6 +233,7 @@ onMounted(async () => {
                             </n-button>
                         </n-input-group>
                     </n-form-item-row>
+                    <Turnstile ref="signupTurnstileRef" v-if="!userOpenSettings.enableMailVerify" v-model:value="signupCfToken" />
                 </n-form>
                 <n-button @click="emailSignup" type="primary" block secondary strong>
                     {{ t('register') }}
@@ -268,9 +246,10 @@ onMounted(async () => {
                     <n-input v-model:value="user.email" />
                 </n-form-item-row>
                 <n-form-item-row :label="t('password')" required>
-                    <n-input v-model:value="user.password" type="password" show-password-on="click" />
+                    <n-input v-model:value="user.password" type="password" show-password-on="click"
+                        @keyup.enter="emailSignup" />
                 </n-form-item-row>
-                <Turnstile v-model:value="cfToken" />
+                <Turnstile ref="resetTurnstileRef" v-model:value="resetCfToken" />
                 <n-form-item-row :label="t('verifyCode')" required>
                     <n-input-group>
                         <n-input v-model:value="user.code" />
@@ -304,5 +283,18 @@ onMounted(async () => {
 
 .n-button {
     margin-top: 10px;
+}
+
+.oauth2-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+}
+
+.oauth2-icon :deep(svg) {
+    width: 100%;
+    height: 100%;
 }
 </style>

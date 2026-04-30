@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from "vue";
-import { useI18n } from 'vue-i18n'
+import { useScopedI18n } from '@/i18n/app'
 import { CloudDownloadRound, ReplyFilled, ForwardFilled, FullscreenRound } from '@vicons/material'
 import ShadowHtmlComponent from "./ShadowHtmlComponent.vue";
 import AiExtractInfo from "./AiExtractInfo.vue";
@@ -8,38 +8,9 @@ import { getDownloadEmlUrl } from '../utils/email-parser';
 import { utcToLocalDate } from '../utils';
 import { useGlobalState } from '../store';
 
-const { preferShowTextMail, useIframeShowMail, useUTCDate } = useGlobalState();
+const { preferShowTextMail, useIframeShowMail, useUTCDate, isDark } = useGlobalState();
 
-const { t } = useI18n({
-  messages: {
-    en: {
-      delete: 'Delete',
-      deleteMailTip: 'Are you sure you want to delete mail?',
-      attachments: 'View Attachments',
-      downloadMail: 'Download Mail',
-      reply: 'Reply',
-      forward: 'Forward',
-      showTextMail: 'Show Text Mail',
-      showHtmlMail: 'Show HTML Mail',
-      saveToS3: 'Save to S3',
-      size: 'Size',
-      fullscreen: 'Fullscreen',
-    },
-    zh: {
-      delete: '删除',
-      deleteMailTip: '确定要删除邮件吗?',
-      attachments: '查看附件',
-      downloadMail: '下载邮件',
-      reply: '回复',
-      forward: '转发',
-      showTextMail: '显示纯文本邮件',
-      showHtmlMail: '显示HTML邮件',
-      saveToS3: '保存到S3',
-      size: '大小',
-      fullscreen: '全屏',
-    }
-  }
-});
+const { t } = useScopedI18n('components.MailContentRenderer')
 
 const props = defineProps({
   mail: {
@@ -184,22 +155,22 @@ const handleSaveToS3 = async (filename, blob) => {
     <AiExtractInfo :metadata="mail.metadata" />
 
     <!-- 邮件内容 -->
-    <div class="mail-content">
+    <div class="mail-content" :class="{ 'dark-mode': isDark }">
       <pre v-if="showTextMail" class="mail-text">{{ mail.text }}</pre>
       <iframe v-else-if="useIframeShowMail" :srcdoc="mail.message" class="mail-iframe">
       </iframe>
-      <ShadowHtmlComponent v-else :key="mail.id" :htmlContent="mail.message" class="mail-html" />
+      <ShadowHtmlComponent v-else :key="mail.id" :htmlContent="mail.message" :isDark="isDark" class="mail-html" />
     </div>
   </div>
 
   <n-drawer v-model:show="showFullscreen" width="100%" placement="bottom" :trap-focus="false" :block-scroll="false"
     style="height: 100vh;">
     <n-drawer-content :title="mail.subject" closable>
-      <div class="fullscreen-mail-content">
+      <div class="fullscreen-mail-content" :class="{ 'dark-mode': isDark }">
         <pre v-if="showTextMail" class="mail-text">{{ mail.text }}</pre>
         <iframe v-else-if="useIframeShowMail" :srcdoc="mail.message" class="mail-iframe">
         </iframe>
-        <ShadowHtmlComponent v-else :key="mail.id" :htmlContent="mail.message" class="mail-html" />
+        <ShadowHtmlComponent v-else :key="mail.id" :htmlContent="mail.message" :isDark="isDark" class="mail-html" />
       </div>
     </n-drawer-content>
   </n-drawer>
@@ -259,11 +230,19 @@ const handleSaveToS3 = async (filename, blob) => {
   line-height: inherit;
 }
 
+.dark-mode .mail-text {
+  color: #e0e0e0;
+}
+
 .mail-iframe {
   width: 100%;
   height: 100%;
   border: none;
   min-height: 400px;
+}
+
+.dark-mode .mail-iframe {
+  background-color: #fff;
 }
 
 .mail-html {

@@ -1,35 +1,38 @@
 <script setup>
 import { computed } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { useScopedI18n } from '@/i18n/app';
 import { ContentCopyOutlined, LinkRound, CodeRound } from '@vicons/material';
 import { useMessage } from 'naive-ui';
+import { useGlobalState } from '../store';
 
 const message = useMessage();
+const { isDark } = useGlobalState();
 
-const { t } = useI18n({
-  messages: {
-    en: {
-      authCode: 'Verification Code',
-      authLink: 'Authentication Link',
-      serviceLink: 'Service Link',
-      subscriptionLink: 'Subscription Link',
-      otherLink: 'Other Link',
-      copySuccess: 'Copied successfully',
-      copyFailed: 'Copy failed',
-      open: 'Open',
-    },
-    zh: {
-      authCode: '验证码',
-      authLink: '认证链接',
-      serviceLink: '服务链接',
-      subscriptionLink: '订阅链接',
-      otherLink: '其他链接',
-      copySuccess: '复制成功',
-      copyFailed: '复制失败',
-      open: '打开',
+// Dark mode: use Gmail's softer blue (#A8C7FA) for better readability
+const alertThemeOverrides = computed(() => {
+  if (isDark.value) {
+    return {
+      colorSuccess: 'rgba(168, 199, 250, 0.15)',
+      borderSuccess: '1px solid rgba(168, 199, 250, 0.3)',
+      iconColorSuccess: '#A8C7FA',
+      titleTextColorSuccess: '#A8C7FA',
     }
   }
+  return {}
 });
+
+const tagThemeOverrides = computed(() => {
+  if (isDark.value) {
+    return {
+      colorSuccess: 'rgba(168, 199, 250, 0.15)',
+      borderSuccess: '1px solid rgba(168, 199, 250, 0.3)',
+      textColorSuccess: '#A8C7FA',
+    }
+  }
+  return {}
+});
+
+const { t } = useScopedI18n('components.AiExtractInfo')
 
 const props = defineProps({
   metadata: {
@@ -108,7 +111,7 @@ const openLink = () => {
 
 <template>
   <div v-if="aiExtract && aiExtract.result" class="ai-extract-info">
-    <n-alert v-if="!compact" type="success" closable>
+    <n-alert v-if="!compact" type="success" closable :theme-overrides="alertThemeOverrides">
       <template #icon>
         <n-icon :component="typeIcon" />
       </template>
@@ -132,7 +135,7 @@ const openLink = () => {
         </n-button>
       </n-space>
     </n-alert>
-    <n-tag v-else type="success" @click="copyToClipboard" style="cursor: pointer;" size="small">
+    <n-tag v-else type="success" @click="copyToClipboard" style="cursor: pointer;" size="small" :theme-overrides="tagThemeOverrides">
       <template #icon>
         <n-icon :component="typeIcon" />
       </template>

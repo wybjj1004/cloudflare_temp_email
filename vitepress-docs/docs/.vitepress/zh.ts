@@ -3,7 +3,12 @@ import { defineConfig, type DefaultTheme } from 'vitepress'
 export const zh = defineConfig({
     title: "临时邮箱文档",
     lang: 'zh-Hans',
-    description: 'CloudFlare 免费收发 临时域名邮箱',
+    description: 'CloudFlare 免费收发临时域名邮箱，支持多域名、附件、Telegram Bot、Webhook、SMTP/IMAP',
+
+    head: [
+        ['meta', { property: 'og:locale', content: 'zh_CN' }],
+        ['meta', { property: 'og:description', content: 'CloudFlare 免费收发临时域名邮箱，支持多域名、附件、Telegram Bot、Webhook、SMTP/IMAP' }],
+    ],
 
     themeConfig: {
         nav: nav(),
@@ -53,7 +58,7 @@ function nav(): DefaultTheme.NavItem[] {
     return [
         {
             text: '主页',
-            link: '/',
+            link: '/zh/',
         },
         {
             text: '指南',
@@ -62,11 +67,11 @@ function nav(): DefaultTheme.NavItem[] {
         },
         {
             text: '服务状态',
-            link: '/status',
+            link: '/zh/status',
         },
         {
             text: '参考',
-            link: '/reference',
+            link: '/zh/reference',
         },
         {
             text: process.env.TAG_NAME || 'v0.2.2',
@@ -131,40 +136,61 @@ function sidebarGuide(): DefaultTheme.SidebarItem[] {
             ]
         },
         {
-            text: '通用',
+            text: '核心配置',
             collapsed: false,
             items: [
-                { text: 'worker变量说明', link: 'worker-vars' },
-                { text: '常见问题', link: 'common-issues' },
+                { text: 'Worker 变量说明', link: 'worker-vars' },
+                { text: '配置发送邮件', link: 'config-send-mail' },
             ]
         },
         {
-            text: '附加功能',
+            text: '帮助',
+            collapsed: false,
+            items: [
+                { text: '常见问题 (FAQ)', link: 'common-issues' },
+            ]
+        },
+        {
+            text: '通知与集成',
+            collapsed: false,
+            items: [
+                { text: '配置 Telegram Bot', link: 'feature/telegram' },
+                { text: '配置 webhook', link: 'feature/webhook' },
+                { text: '配置 SMTP/IMAP 邮件客户端', link: 'feature/config-smtp-proxy' },
+                { text: 'Oauth2 第三方登录', link: 'feature/user-oauth2' },
+            ]
+        },
+        {
+            text: '高级功能',
             collapsed: false,
             items: [
                 { text: 'AI 邮件识别', link: 'feature/ai-extract' },
-                { text: '配置 SMTP IMAP 代理服务', link: 'feature/config-smtp-proxy' },
-                { text: '发送邮件 API', link: 'feature/send-mail-api' },
-                { text: '查看邮件 API', link: 'feature/mail-api' },
                 { text: '配置子域名邮箱', link: 'feature/subdomain' },
-                { text: '配置 Telegram Bot', link: 'feature/telegram' },
                 { text: '配置 S3 附件', link: 'feature/s3-attachment' },
                 { text: '配置 worker 使用 wasm 解析邮件', link: 'feature/mail_parser_wasm_worker' },
-                { text: '配置 webhook', link: 'feature/webhook' },
-                { text: '新建邮箱地址 API', link: 'feature/new-address-api' },
-                { text: 'Oauth2 第三方登录', link: 'feature/user-oauth2' },
-                { text: '配置其他worker增强', link: 'feature/another-worker-enhanced' },
+                { text: '配置其他 worker 增强', link: 'feature/another-worker-enhanced' },
                 { text: '给网页增加 Google Ads', link: 'feature/google-ads.md' },
             ]
         },
         {
-            text: '功能简介',
+            text: 'API 接口',
+            collapsed: false,
+            items: [
+                { text: '新建邮箱地址 API', link: 'feature/new-address-api' },
+                { text: '查看邮件 API', link: 'feature/mail-api' },
+                { text: 'AI Agent 使用邮箱', link: 'feature/agent-email' },
+                { text: '发送邮件 API', link: 'feature/send-mail-api' },
+                { text: '删除邮箱地址 API', link: 'feature/delete-address' },
+            ]
+        },
+        {
+            text: '管理后台',
             collapsed: false,
             items: [
                 { text: 'Admin 控制台', link: 'feature/admin' },
                 { text: 'Admin 用户管理', link: 'feature/admin-user-management' },
             ]
         },
-        { text: '参考', base: "/", link: 'reference' }
+        { text: '参考', base: "/zh/", link: 'reference' }
     ]
 }
